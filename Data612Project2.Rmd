@@ -1,0 +1,205 @@
+---
+title: "Data 612 Project 2"
+author: "Kevin DiPerna"
+date: "2025-06-27"
+output: html_document
+---
+
+## Part 1 User-User Collaborative Filtering
+
+### Introduction
+
+For part 1 of my project I will develop and evaluate a User-User Collaborative Filtering recommender system using the MovieLense dataset from the recommenderlab package in R. The goal is to compare the performance of several UBCF configurations by varying key parameters such as similarity metrics (cosine vs. Pearson), neighborhood sizes (10, 30, 50), and normalization techniques (centering). We assess the predictive accuracy of each model using Root Mean Squared Error (RMSE) and provide visualizations to support our analysis. Based on the results, we identify the most effective configuration and provide a recommendation for building an accurate user-based recommender system.
+
+Load the packages and data
+
+```{r}
+library("ggplot2")
+library("recommenderlab")
+   help(package = "recommenderlab")
+```
+
+```{r}
+data(MovieLense)
+   MovieLense
+```
+
+Filter users with \>50 ratings
+
+```{r}
+MovieLense <- MovieLense[rowCounts(MovieLense) > 50, ]
+```
+
+### Evaluation Scheme
+
+Splits the data into 80% training and 20% testing, where each test user is given only 10 known ratings and a good rating is 4. 
+
+```{r}
+set.seed(123)
+eval_scheme <- evaluationScheme(
+  MovieLense, method = "split", train = 0.8, given = 10, goodRating = 4)
+```
+
+### Define and Train Models
+
+Here is five UBCF models with different configurations by varying the similarity metric (cosine or Pearson), neighborhood size (10, 30, or 50), and using centered normalization to user ratings. Cosine focus on the the angle between two vectors while pearson correlation coefficient measures the relationship between two variables while adjusting to a ratings scale.The neighbor size determines how many of these similar users are considered when predicting the target user's preferences.
+
+```{r}
+algorithms <- list(
+  "UBCF_Cosine_10" = list(name = "UBCF", param = list(method = "cosine", nn = 10, normalize = "center")),
+  "UBCF_Cosine_30" = list(name = "UBCF", param = list(method = "cosine", nn = 30, normalize = "center")),
+  "UBCF_Cosine_50" = list(name = "UBCF", param = list(method = "cosine", nn = 50, normalize = "center")),
+  "UBCF_Pearson_30" = list(name = "UBCF", param = list(method = "pearson", nn = 30, normalize = "center")),
+  "UBCF_Pearson_50" = list(name = "UBCF", param = list(method = "pearson", nn = 50, normalize = "center"))
+)
+```
+
+## Evaluate Models (RMSE/MAE)
+
+To evaluate model performance, we use Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE)—both measure the difference between predicted and actual ratings, with RMSE penalizing larger errors more heavily, while MAE provides a straightforward average of absolute prediction errors. I used RMSE as the evaluation metric because it penalizes larger errors more than MAE, making it more sensitive to inaccurate predictions and better suited for identifying models that minimize large deviations in rating predictions.
+
+```{r}
+# Create an empty data frame to store results
+results_df <- data.frame(Model = character(), RMSE = numeric(), MAE = numeric(), stringsAsFactors = FALSE)
+
+# Loop through models and compute RMSE/MAE
+for (model_name in names(algorithms)) {
+  # Train model
+  rec_model <- Recommender(getData(eval_scheme, "train"), method = algorithms[[model_name]]$name,
+                           parameter = algorithms[[model_name]]$param)
+  
+  # Predict ratings
+  pred <- predict(rec_model, getData(eval_scheme, "known"), type = "ratings")
+  
+  # Calculate prediction accuracy
+  acc <- calcPredictionAccuracy(pred, getData(eval_scheme, "unknown"))
+  
+  # Store results
+  results_df <- rbind(results_df, data.frame(Model = model_name, RMSE = acc["RMSE"], MAE = acc["MAE"]))
+}
+
+# View results
+results_df
+
+```
+
+```{r}
+# Plot RMSE for each model
+ggplot(results_df, aes(x = reorder(Model, RMSE), y = RMSE)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = round(RMSE, 3)), vjust = -0.5, size = 2) +
+  theme_minimal() +
+  labs(
+    title = "User-User CF: RMSE Comparison",
+    x = "Model",
+    y = "RMSE"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+### Key Findings
+
+-   UBCF with Pearson similarity and neighborhood size of 50 yielded the lowest RMSE (1.059), making it the most accurate in predicting user ratings
+-   Cosine similarity consistently underperformed compared to Pearson similarity at all neighborhood sizes
+-   Smaller neighborhood sizes significantly reduced model accuracy, likely due to limited user overlap
+-   Centered normalization helped stabilize predictions by removing user-specific rating biases
+
+### Recommendation
+
+Based on the results, the recommended configuration for User-User Collaborative Filtering on the MovieLense dataset is:
+
+-   Method: UBCF
+-   Similarity metric: Pearson
+-   Neighborhood size: 50
+-   Normalization: Centered ratings
+
+This setup offers a strong balance between prediction accuracy and collaborative robustness.
+
+
+## Part 2 Item-Item Collaborative Filtering (IBCF)
+
+### Item-Item Collaborative Filtering (IBCF)
+
+We now evaluate Item-Item Collaborative Filtering models using the same dataset and evaluation scheme as before. The key parameters tested include:
+- Similarity metrics: cosine vs. Pearson
+- Neighborhood sizes: 30 and 50
+- Normalization: centered ratings
+
+### Define and Train IBCF Models
+
+Here are four IBCF models with different configurations by varying the similarity metric (cosine or Pearson), neighborhood size (30, or 50), and using centered normalization to user ratings. Cosine focus on the the angle between two vectors while pearson correlation coefficient measures the relationship between two variables while adjusting to a ratings scale.The neighbor size determines how many of these similar items. 
+
+```{r}
+algorithms_ibcf <- list(
+  "IBCF_Cosine_30" = list(name = "IBCF", param = list(method = "cosine", k = 30, normalize = "center")),
+  "IBCF_Cosine_50" = list(name = "IBCF", param = list(method = "cosine", k = 50, normalize = "center")),
+  "IBCF_Pearson_30" = list(name = "IBCF", param = list(method = "pearson", k = 30, normalize = "center")),
+  "IBCF_Pearson_50" = list(name = "IBCF", param = list(method = "pearson", k = 50, normalize = "center"))
+)
+```
+
+### Evaluate Models (RMSE/MAE)
+
+To evaluate model performance, we use Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE)—both measure the difference between predicted and actual ratings, with RMSE penalizing larger errors more heavily, while MAE provides a straightforward average of absolute prediction errors. I used RMSE as the evaluation metric because it penalizes larger errors more than MAE, making it more sensitive to inaccurate predictions and better suited for identifying models that minimize large deviations in rating predictions.
+
+```{r}
+results_ibcf <- data.frame(Model = character(), RMSE = numeric(), MAE = numeric(), stringsAsFactors = FALSE)
+
+for (model_name in names(algorithms_ibcf)) {
+  rec_model <- Recommender(getData(eval_scheme, "train"), method = algorithms_ibcf[[model_name]]$name,
+                           parameter = algorithms_ibcf[[model_name]]$param)
+  
+  pred <- predict(rec_model, getData(eval_scheme, "known"), type = "ratings")
+  acc <- calcPredictionAccuracy(pred, getData(eval_scheme, "unknown"))
+  
+  results_ibcf <- rbind(results_ibcf, data.frame(Model = model_name, RMSE = acc["RMSE"], MAE = acc["MAE"]))
+}
+
+results_ibcf
+```
+
+### IBCF RMSE Plot
+```{r}
+ggplot(results_ibcf, aes(x = reorder(Model, RMSE), y = RMSE)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  geom_text(aes(label = round(RMSE, 3)), vjust = 0.1) +
+  theme_minimal() +
+  labs(title = "Item-Item CF: RMSE Comparison", x = "Model", y = "RMSE") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Key Findings
+
+- IBCF with Cosine similarity and k = 50 produced the best results, achieving the lowest RMSE of 1.462
+- Cosine similarity outperformed Pearson across both tested neighborhood sizes
+- Increasing neighborhood size (from 30 to 50) improved performance for cosine, but slightly worsened performance for Pearson.
+- Compared to User-Based Collaborative Filtering, IBCF models had higher RMSE overall, suggesting UBCF may be more effective on this dataset.
+
+## Recommendation
+
+For item-based collaborative filtering using the MovieLense dataset, we recommend:
+- Method: IBCF  
+- Similarity: Cosine  
+- Neighborhood size (k): 50  
+- Normalization: Centered ratings  
+
+This delivered the most accurate rating predictions among the IBCF models tested.
+
+### Final Thoughts
+
+Collaborative filtering predicts a user's preferences based on past behavior. In User-User Collaborative Filtering (UBCF), the system recommends items to a user by finding other users with similar rating patterns and suggesting items those similar users liked. In contrast, Item-Item Collaborative Filtering (IBCF) recommends items based on their similarity to items the user has already rated highly—essentially comparing items instead of users. UBCF can capture diverse user preferences and is more dynamic for rapidly changing user behavior, but it may suffer from scalability issues in large datasets. IBCF tends to be more stable and scalable, as item similarities change less frequently than user preferences. 
+
+However, both approaches face common challenges. The cold start problem arises when new users or items have insufficient data, making it difficult to generate accurate recommendations. Data sparsity occurs where the majority of users have interacted with only a small subset of items—can further reduce accuracy. Additionally, collaborative filtering models may inherit and even amplify biases in the data, such as disproportionately recommending popular items while ignoring niche interests.
+
+Modern recommender systems increasingly use hybrid approaches that combine collaborative filtering with content-based methods, machine learning, and even deep learning models. Advanced techniques such as matrix factorization, gradient boosting, and neural collaborative filtering are now commonly used to capture complex user-item relationships. As data grows in volume and diversity, future systems are expected to become even more personalized and adaptive.
+
+
+
+
+
+
+
+
+
+
