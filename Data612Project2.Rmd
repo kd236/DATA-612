@@ -7,6 +7,10 @@ output: html_document
 
 ## Part 1 User-User Collaborative Filtering
 
+### What is a recommender system?
+
+A recommender system is an algorithm designed to suggest items to users based on their past preferences or behaviors. One major category of recommender systems is collaborative filtering, which relies on information about similar users or similar items rather than item content. Collaborative filtering has two main types. In item-item collaborative filtering, the system recommends to a user the items that are most similar to the ones they have previously interacted with or purchased. In user-user collaborative filtering, the system recommends to a user the items that are most preferred by users with similar tastes or behaviors.
+
 ### Introduction
 
 For part 1 of my project I will develop and evaluate a User-User Collaborative Filtering recommender system using the MovieLense dataset from the recommenderlab package in R. The goal is to compare the performance of several UBCF configurations by varying key parameters such as similarity metrics (cosine vs. Pearson), neighborhood sizes (10, 30, 50), and normalization techniques (centering). We assess the predictive accuracy of each model using Root Mean Squared Error (RMSE) and provide visualizations to support our analysis. Based on the results, we identify the most effective configuration and provide a recommendation for building an accurate user-based recommender system.
@@ -54,7 +58,7 @@ algorithms <- list(
 )
 ```
 
-## Evaluate Models (RMSE/MAE)
+### Evaluate Models (RMSE/MAE)
 
 To evaluate model performance, we use Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE)—both measure the difference between predicted and actual ratings, with RMSE penalizing larger errors more heavily, while MAE provides a straightforward average of absolute prediction errors. I used RMSE as the evaluation metric because it penalizes larger errors more than MAE, making it more sensitive to inaccurate predictions and better suited for identifying models that minimize large deviations in rating predictions.
 
@@ -116,6 +120,10 @@ Based on the results, the recommended configuration for User-User Collaborative 
 
 This setup offers a strong balance between prediction accuracy and collaborative robustness.
 
+### Interpretation
+
+The superior performance of the UBCF model using Pearson similarity with a neighborhood size of 50 can be attributed to both the nature of the dataset and the algorithm's behavior. The MovieLense dataset contains user ratings on a standardized scale (1–5), and Pearson similarity is effective in this context because it accounts for differences in individual user rating tendencies (e.g., some users rate more harshly or leniently). This normalization makes it easier to identify truly similar users. A larger neighborhood size (50) allows the model to aggregate preferences from a broader set of users, reducing the risk of overfitting to a small, potentially noisy sample. At the same time, centered normalization removes user-specific biases, which further improves consistency. These factors combined lead to more accurate and stable predictions. In contrast, cosine similarity does not account for rating scale differences and performed worse across all neighborhood sizes, suggesting that accounting for user bias is particularly important in this dataset.
+
 
 ## Part 2 Item-Item Collaborative Filtering (IBCF)
 
@@ -169,14 +177,14 @@ ggplot(results_ibcf, aes(x = reorder(Model, RMSE), y = RMSE)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-## Key Findings
+### Key Findings
 
 - IBCF with Cosine similarity and k = 50 produced the best results, achieving the lowest RMSE of 1.462
 - Cosine similarity outperformed Pearson across both tested neighborhood sizes
 - Increasing neighborhood size (from 30 to 50) improved performance for cosine, but slightly worsened performance for Pearson.
 - Compared to User-Based Collaborative Filtering, IBCF models had higher RMSE overall, suggesting UBCF may be more effective on this dataset.
 
-## Recommendation
+### Recommendation
 
 For item-based collaborative filtering using the MovieLense dataset, we recommend:
 - Method: IBCF  
@@ -185,6 +193,10 @@ For item-based collaborative filtering using the MovieLense dataset, we recommen
 - Normalization: Centered ratings  
 
 This delivered the most accurate rating predictions among the IBCF models tested.
+
+### Interperation 
+
+For IBCF, the best-performing model used cosine similarity with a neighborhood size of 50, achieving the lowest RMSE among the IBCF configurations. This result may be influenced by the structure of the MovieLense dataset, where certain items (movies) tend to have more consistent co-rating patterns across users. Cosine similarity works well in this setting because it captures co-occurrence patterns between items, and with a larger neighborhood size, the model is able to leverage more item-item relationships for prediction. However, IBCF overall performed worse than UBCF, likely because it relies on item similarity alone and does not account for variability in user rating behavior. Pearson similarity underperformed in the item-based context, possibly due to the sparsity of overlapping ratings between items, making it less reliable for measuring item similarity. These findings suggest that while IBCF can be useful, its effectiveness is more sensitive to sparsity and item coverage compared to UBCF.
 
 ### Final Thoughts
 
