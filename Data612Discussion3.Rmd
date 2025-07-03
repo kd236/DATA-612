@@ -1,0 +1,12 @@
+---
+title: "Data 612 Discussion 3"
+author: "Kevin DiPerna"
+date: "2025-07-03"
+output: html_document
+---
+
+As recommender systems become more prevalent across sectors like entertainment, hiring, and retail, they increasingly reflect and reinforce the biases present in the data they are trained on. These systems often rely on user behavior and historical preferences, which can encode societal prejudices. For instance, a user-user collaborative filtering model might recommend content based on the preferences of similar users—if those users historically ignored media created by underrepresented groups, the system could continue to exclude those creators from future recommendations, perpetuating invisibility. This is an example of how recommender systems, when left unchecked, can unintentionally reinforce human bias.
+
+Techniques such as collaborative filtering and content-based filtering each have their vulnerabilities. Collaborative filtering, for example, amplifies feedback loops by repeatedly recommending what has already been popular—leading to the "rich-get-richer" effect and marginalizing niche or diverse content. Content-based filtering can also encode bias if the underlying metadata (like movie genres or descriptions) carries subjective or exclusionary labels. Without deliberate intervention, such as fairness-aware ranking or diversity constraints, recommender systems can end up making ethically questionable decisions, including biased customer segmentation and the reinforcement of stereotypes.
+
+However, recommender systems also hold potential to promote fairness if designed responsibly. By incorporating techniques like diversity-aware modeling, debiasing algorithms, and fairness constraints (such as the Equality of Opportunity framework), these systems can be directed to avoid discriminatory outcomes. For example, a job recommender system could be adjusted to ensure that equally qualified candidates from different backgrounds receive comparable opportunities. Ultimately, whether a recommender system reinforces or reduces bias depends on the intentions behind its design and the ethical considerations taken during development and evaluation.
