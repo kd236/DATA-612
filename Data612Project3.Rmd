@@ -1,0 +1,205 @@
+---
+title: "Project 3"
+author: "Kevin DiPerna"
+date: "2025-07-04"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(ggplot2)
+library(recommenderlab)
+```
+
+### Introduction
+
+For this project, I will build off of my User-User Collaborative Filtering recommender system from my previous project. This project explores UBCF and compare it to Singular Value Decomposition (SVD)–based matrix factorization. We evaluate multiple configurations and also explore how varying the number of latent features affects SVD performance.
+
+### What is Singular Value Decompisition (SVD) ?
+
+Singular Value Decomposition (SVD) is a matrix factorization technique used in recommender systems to uncover hidden relationships between users and items. It decomposes the user-item rating matrix into three smaller matrices that represent latent user preferences and item characteristics. By projecting both users and items into a shared latent feature space, SVD can predict missing ratings even when the original matrix is sparse. This makes it highly effective for recommendation tasks, although it can be less interpretable than simpler methods and requires more computation. Despite these challenges, SVD often outperforms traditional approaches by capturing deeper, abstract patterns in user behavior.
+
+### Load and Prepare Data
+
+```{r}
+data(MovieLense)
+MovieLense <- MovieLense[rowCounts(MovieLense) > 50, ]
+
+set.seed(123)
+eval_scheme <- evaluationScheme(MovieLense, method = "split", train = 0.8, given = 10, goodRating = 4)
+```
+
+###  User-User Collaborative Filtering (UBCF)
+
+Here is five UBCF models with different configurations by varying the similarity metric (cosine or Pearson), neighborhood size (10, 30, or 50), and using centered normalization to user ratings. Cosine focus on the the angle between two vectors while pearson correlation coefficient measures the relationship between two variables while adjusting to a ratings scale.The neighbor size determines how many of these similar users are considered when predicting the target user's preferences.
+
+```{r}
+algorithms <- list(
+  "UBCF_Cosine_10" = list(name = "UBCF", param = list(method = "cosine", nn = 10, normalize = "center")),
+  "UBCF_Cosine_30" = list(name = "UBCF", param = list(method = "cosine", nn = 30, normalize = "center")),
+  "UBCF_Cosine_50" = list(name = "UBCF", param = list(method = "cosine", nn = 50, normalize = "center")),
+  "UBCF_Pearson_30" = list(name = "UBCF", param = list(method = "pearson", nn = 30, normalize = "center")),
+  "UBCF_Pearson_50" = list(name = "UBCF", param = list(method = "pearson", nn = 50, normalize = "center"))
+)
+
+results_df <- data.frame(Model = character(), RMSE = numeric(), MAE = numeric(), stringsAsFactors = FALSE)
+
+for (model_name in names(algorithms)) {
+  rec_model <- Recommender(getData(eval_scheme, "train"), method = algorithms[[model_name]]$name,
+                           parameter = algorithms[[model_name]]$param)
+  pred <- predict(rec_model, getData(eval_scheme, "known"), type = "ratings")
+  acc <- calcPredictionAccuracy(pred, getData(eval_scheme, "unknown"))
+  results_df <- rbind(results_df, data.frame(Model = model_name, RMSE = acc["RMSE"], MAE = acc["MAE"]))
+}
+
+results_df
+```
+
+### UBCF RMSE Plot
+
+To evaluate model performance, we use Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE)—both measure the difference between predicted and actual ratings, with RMSE penalizing larger errors more heavily, while MAE provides a straightforward average of absolute prediction errors. I used RMSE as the evaluation metric because it penalizes larger errors more than MAE, making it more sensitive to inaccurate predictions and better suited for identifying models that minimize large deviations in rating predictions.
+
+```{r}
+ggplot(results_df, aes(x = reorder(Model, RMSE), y = RMSE)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = round(RMSE, 3)), vjust = -0.5) +
+  labs(title = "UBCF: RMSE Comparison", x = "Model", y = "RMSE") +
+  theme_minimal()
+```
+
+### Key Findings and Interpretation
+
+-   UBCF with Pearson similarity and neighborhood size of 50 yielded the lowest RMSE (1.059), making it the most accurate in predicting user ratings
+-   Cosine similarity consistently under performed compared to Pearson similarity at all neighborhood sizes
+-   Smaller neighborhood sizes significantly reduced model accuracy, likely due to limited user overlap
+-   Centered normalization helped stabilize predictions by removing user-specific rating biases
+
+The UBCF model using Pearson similarity with a neighborhood size of 50 outperformed others due to both the characteristics of the MovieLense dataset and the strengths of the algorithm. Pearson similarity adjusts for individual rating habits, making it well-suited for datasets with standardized rating scales like MovieLense. A larger neighborhood size provides more stable predictions by averaging preferences across more users, while centered normalization removes user-specific bias. In contrast, cosine similarity does not adjust for rating scale differences and consistently performed worse, highlighting the importance of bias-aware simila
+
+
+### SVD with recommenderlab
+
+Train a Singular Value Decomposition (SVD) model 
+
+```{r}
+svd_model <- Recommender(getData(eval_scheme, "train"), method = "SVD")
+svd_pred <- predict(svd_model, getData(eval_scheme, "known"), type = "ratings")
+svd_acc <- calcPredictionAccuracy(svd_pred, getData(eval_scheme, "unknown"))
+
+# Add to results
+results_df <- rbind(results_df, data.frame(Model = "SVD", RMSE = svd_acc["RMSE"], MAE = svd_acc["MAE"]))
+results_df
+```
+
+### UBCF vs SVD Plot
+
+```{r}
+ggplot(results_df, aes(x = reorder(Model, RMSE), y = RMSE)) +
+  geom_bar(stat = "identity", fill = "darkorange") +
+  geom_text(aes(label = round(RMSE, 3)), vjust = -0.5) +
+  labs(title = "RMSE Comparison: UBCF vs SVD", x = "Model", y = "RMSE") +
+  theme_minimal()
+```
+
+### Key Findings and Interpretation
+
+- The SVD model achieved the lowest RMSE (1.009), outperforming all User-Based Collaborative Filtering (UBCF) configurations
+
+The superior performance of the SVD model highlights the strength of matrix factorization in capturing complex user-item interactions, even in sparse datasets like MovieLense. By projecting users and items into a shared latent space, SVD generalizes well and avoids overfitting to noisy individual preferences. In contrast, UBCF models—particularly those relying on cosine similarity—were more sensitive to rating scale differences and performed worse with small neighborhoods. These results suggest that while UBCF can be effective, SVD offers more robust and accurate predictions, especially when minimizing RMSE is the goal.
+
+The SVD model achieved the lowest RMSE because it captures latent user and item factors that reveal hidden patterns in the data, such as genre preferences or rating tendencies. By projecting the rating matrix into a lower-dimensional space, SVD generalizes well to unseen data and reduces the influence of noise and sparsity. Unlike UBCF, which relies on local user similarity, SVD leverages global patterns across the entire dataset, leading to more accurate and stable predictions.
+
+
+### Matrix Factorization with Tunable SVD
+
+We use the recosystem package to implement SVD and evaluate the impact of different numbers of latent factors k. The data is manually preprocessed to ensure compatibility with recosystem, which requires numeric user/item IDs and explicit train/test splits.
+
+```{r}
+library(recosystem)
+library(dplyr)
+library(ggplot2)
+```
+
+### Prepare Data
+
+```{r}
+# Convert MovieLense to data frame with numeric IDs
+df <- as(MovieLense, "data.frame")
+
+# Map user and item to numeric IDs
+user_map <- df %>% distinct(user) %>% mutate(user_id = row_number())
+item_map <- df %>% distinct(item) %>% mutate(item_id = row_number())
+
+df <- df %>%
+  left_join(user_map, by = "user") %>%
+  left_join(item_map, by = "item") %>%
+  select(user_id, item_id, rating)
+
+# Manual 80/20 train/test split by user
+set.seed(123)
+df <- df %>% group_by(user_id) %>%
+  mutate(row = row_number(), n = n(), split = ifelse(row <= 0.8 * n, "train", "test")) %>%
+  ungroup()
+
+train_df <- df %>% filter(split == "train") %>% select(user_id, item_id, rating)
+test_df <- df %>% filter(split == "test") %>% select(user_id, item_id)
+actual_df <- df %>% filter(split == "test") %>% select(user_id, item_id, rating)
+
+# Save to disk for recosystem
+write.table(train_df, "train.txt", sep = " ", row.names = FALSE, col.names = FALSE)
+write.table(test_df, "test.txt", sep = " ", row.names = FALSE, col.names = FALSE)
+```
+
+### Train and Evaluate SVD with Different k
+
+In an SVD model, the parameter k controls the number of latent factors used to represent user preferences and item characteristics. A smaller k captures broad, general trends in the data, while a larger k models more detailed and specific patterns.
+
+```{r}
+# Initialize recosystem object
+r <- Reco()
+
+# Try smaller latent factors
+k_values <- c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
+svd_k_results <- data.frame(k = integer(), RMSE = numeric())
+
+for (k in k_values) {
+  r$train(data_file("train.txt"), opts = list(dim = k, costp_l2 = 0.1, costq_l2 = 0.1,
+                                               niter = 30, nthread = 2, verbose = FALSE))
+  
+  pred_file <- tempfile()
+  r$predict(data_file("test.txt"), out_file(pred_file))
+  predicted_ratings <- scan(pred_file)
+  
+  test_df$predicted <- predicted_ratings
+  merged <- merge(test_df, actual_df, by = c("user_id", "item_id"))
+  
+  rmse <- sqrt(mean((merged$predicted - merged$rating)^2, na.rm = TRUE))
+  svd_k_results <- rbind(svd_k_results, data.frame(k = k, RMSE = rmse))
+}
+
+svd_k_results
+
+```
+
+### Visualize RMSE at Different Latent Dimensions
+
+```{r}
+ggplot(svd_k_results, aes(x = k, y = RMSE)) +
+  geom_line() +
+  geom_point(size = 3, color = "darkred") +
+  labs(title = "SVD RMSE at Different Latent Dimensions (k)",
+       x = "Latent Factors (k)", y = "RMSE") +
+  theme_minimal()
+
+```
+
+### Interpretation
+
+This plot show how RMSE varies as the number of latent factors k increases in the SVD model. RMSE begins at 1.22 for k = 5 and steadily increases to about 1.33 for k = 50, indicating that larger k values lead to worse performance on this dataset. This trend suggests that the model is overfitting at higher dimensions—learning noise rather than meaningful user-item patterns.
+
+In sparse datasets like MovieLense, simpler models with fewer latent factors often generalize better. Based on these results, lower k values offer the most accurate predictions and should be preferred for matrix factorization. 
+
+
+
+
