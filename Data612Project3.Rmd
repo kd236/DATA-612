@@ -32,7 +32,9 @@ eval_scheme <- evaluationScheme(MovieLense, method = "split", train = 0.8, given
 
 ###  User-User Collaborative Filtering (UBCF)
 
-Here is five UBCF models with different configurations by varying the similarity metric (cosine or Pearson), neighborhood size (10, 30, or 50), and using centered normalization to user ratings. Cosine focus on the the angle between two vectors while pearson correlation coefficient measures the relationship between two variables while adjusting to a ratings scale.The neighbor size determines how many of these similar users are considered when predicting the target user's preferences.
+Here is five UBCF models with different configurations by varying the similarity metric (cosine or Pearson), neighborhood size (10, 30, or 50), and using centered normalization to user ratings. Cosine focus on the the angle between two vectors while Pearson correlation coefficient measures the relationship between two variables while adjusting to a ratings scale.The neighbor size determines how many of these similar users are considered when predicting the target user's preferences.
+
+
 
 ```{r}
 algorithms <- list(
@@ -107,6 +109,8 @@ ggplot(results_df, aes(x = reorder(Model, RMSE), y = RMSE)) +
 - The SVD model achieved the lowest RMSE (1.009), outperforming all User-Based Collaborative Filtering (UBCF) configurations
 
 The superior performance of the SVD model highlights the strength of matrix factorization in capturing complex user-item interactions, even in sparse datasets like MovieLense. By projecting users and items into a shared latent space, SVD generalizes well and avoids overfitting to noisy individual preferences. In contrast, UBCF models—particularly those relying on cosine similarity—were more sensitive to rating scale differences and performed worse with small neighborhoods. These results suggest that while UBCF can be effective, SVD offers more robust and accurate predictions, especially when minimizing RMSE is the goal.
+
+In the MovieLense dataset, users rate on a 1–5 scale and often have different tendencies (some lenient, some harsh). Pearson similarity adjusts for this, making it more effective at capturing meaningful similarities.The results showed that Pearson outperformed Cosine consistently—this is strong evidence to support that the similarity metric makes a real difference.
 
 The SVD model achieved the lowest RMSE because it captures latent user and item factors that reveal hidden patterns in the data, such as genre preferences or rating tendencies. By projecting the rating matrix into a lower-dimensional space, SVD generalizes well to unseen data and reduces the influence of noise and sparsity. Unlike UBCF, which relies on local user similarity, SVD leverages global patterns across the entire dataset, leading to more accurate and stable predictions.
 
@@ -194,12 +198,23 @@ ggplot(svd_k_results, aes(x = k, y = RMSE)) +
 
 ```
 
-### Interpretation
+### Interpretation 
+
+- The RMSE increases as k increases from 5 to 50.
+
+- This suggests that adding complexity (more latent factors) does not help and actually hurts performance.
+
+- Overfitting occurs when the model learns noise in the training data instead of general patterns, and the rising RMSE on test data is classic evidence of that.
+
+### Conclusion 
 
 This plot show how RMSE varies as the number of latent factors k increases in the SVD model. RMSE begins at 1.22 for k = 5 and steadily increases to about 1.33 for k = 50, indicating that larger k values lead to worse performance on this dataset. This trend suggests that the model is overfitting at higher dimensions—learning noise rather than meaningful user-item patterns.
 
 In sparse datasets like MovieLense, simpler models with fewer latent factors often generalize better. Based on these results, lower k values offer the most accurate predictions and should be preferred for matrix factorization. 
 
+Regarding the similarity metrics in UBCF, I observed that Pearson consistently outperformed Cosine in terms of RMSE. This is likely due to Pearson’s ability to normalize rating biases across users, which is especially important in the MovieLense dataset where users exhibit different rating scales. This normalization helps identify users with truly similar preferences rather than similar absolute ratings.
+
+For the SVD model, I provided a plot of RMSE versus latent dimensions (k). The RMSE increased with higher k values, which is a classic sign of overfitting—more complex models fitting noise in the data rather than useful structure. This supports the choice of smaller k values in sparse datasets to maintain generalization and minimize prediction error.
 
 
 
