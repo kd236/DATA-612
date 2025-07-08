@@ -1,0 +1,387 @@
+---
+title: "Data 612 Project 4"
+author: "Kevin DiPerna"
+output: html_document
+---
+
+### Introduction 
+
+This project explores and compares two recommendation algorithms—User-Based Collaborative Filtering (UBCF) and Singular Value Decomposition (SVD)—using the Jester5k joke ratings dataset. I evaluate the models based on traditional accuracy metrics like RMSE, as well as recommendation-specific metrics such as diversity and serendipity. To improve recommendation variety, we also implement long-tail filtering by removing the most popular jokes and retraining both models. The goal is to critically assess not only which model performs best, but also how recommendation quality shifts when we optimize for novelty and user experience.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(recommenderlab)
+library(ggplot2)
+set.seed(123)
+```
+
+### Load Data
+
+Jester5k contains a 5000 x 100 rating matrix (5000 users and 100 jokes) with ratings between
+-10.00 and +10.00. All selected users have rated 36 or more jokes.
+
+```{r}
+data(Jester5k)
+Jester5k
+nratings(Jester5k)
+summary(rowCounts(Jester5k))
+hist(getRatings(Jester5k), main="Distribution of ratings")
+
+best <- which.max(colMeans(Jester5k))
+cat(JesterJokes[best])
+```
+
+### Evaluation Scheme
+
+Create an evaluation scheme that splits the Jester5k dataset into 80% training and 20% testing, where each test user is given only 10 known ratings, and ratings of 5 or higher are considered "good" for recommendation evaluation purposes.
+
+```{r}
+scheme <- evaluationScheme(Jester5k, method = "split", train = 0.8, given = 10, goodRating = 5)
+```
+
+### Train UBCF and SVD Models
+
+Train two recommender models on the training data: a User-Based Collaborative Filtering (UBCF) model using Pearson similarity, a neighborhood size of 30, and centered normalization, and an SVD model using matrix factorization.
+
+```{r}
+ubcf_model <- Recommender(getData(scheme, "train"), method = "UBCF",
+                          parameter = list(method = "pearson", nn = 30, normalize = "center"))
+
+svd_model <- Recommender(getData(scheme, "train"), method = "SVD")
+```
+
+### Predict Ratings
+
+Trained UBCF and SVD models to predict ratings for the 10 known items per user in the test set, enabling evaluation of how well the models estimate user preferences 
+
+```{r}
+ubcf_pred <- predict(ubcf_model, getData(scheme, "known"), type = "ratings")
+svd_pred  <- predict(svd_model, getData(scheme, "known"), type = "ratings")
+```
+
+### Evaluate Accuracy with RMSE
+
+Calculate the Root Mean Squared Error (RMSE) for the UBCF and SVD predictions by comparing them to the actual unknown ratings, and stores the results in a data frame for performance comparison.
+
+```{r}
+ubcf_acc <- calcPredictionAccuracy(ubcf_pred, getData(scheme, "unknown"))
+svd_acc  <- calcPredictionAccuracy(svd_pred, getData(scheme, "unknown"))
+
+rmse_results <- data.frame(
+  Model = c("UBCF", "SVD"),
+  RMSE = c(ubcf_acc["RMSE"], svd_acc["RMSE"])
+)
+
+rmse_results
+```
+
+### Add Diversity and Serendipity Metrics
+
+Generate top-10 recommendations for each user using the trained UBCF and SVD models. It then calculates diversity by measuring how dissimilar the recommended items are to each other using a cosine similarity matrix, and calculates serendipity by checking how many of the recommended items are unexpected (i.e., not popular and not already known).
+
+
+```{r}
+# Generate top-N predictions
+topn_ubcf <- predict(ubcf_model, getData(scheme, "known"), type = "topNList", n = 10)
+topn_svd <- predict(svd_model, getData(scheme, "known"), type = "topNList", n = 10)
+
+# Create item-item similarity matrix
+item_sim <- as.matrix(similarity(Jester5k, method = "cosine", which = "items"))
+colnames(item_sim) <- colnames(Jester5k)
+rownames(item_sim) <- colnames(Jester5k)
+
+# Diversity function
+diversity_score <- function(topn, sim_matrix) {
+  topn_list <- as(topn, "list")
+  scores <- sapply(topn_list, function(items) {
+    if (length(items) < 2) return(NA)
+    items <- intersect(items, colnames(sim_matrix))
+    if (length(items) < 2) return(NA)
+    sims <- sim_matrix[items, items, drop = FALSE]
+    dissimilarities <- 1 - sims[lower.tri(sims)]
+    mean(dissimilarities, na.rm = TRUE)
+  })
+  mean(scores, na.rm = TRUE)
+}
+
+# Serendipity function
+item_counts <- colCounts(Jester5k)
+popular_items <- names(sort(item_counts, decreasing = TRUE)[1:20])
+train_data <- getData(scheme, "train")
+
+serendipity_score <- function(topn, train_data) {
+  topn_list <- as(topn, "list")
+  scores <- sapply(1:length(topn_list), function(i) {
+    rec_items <- topn_list[[i]]
+    known_items <- which(!is.na(as(train_data[i,], "matrix")))
+    serendip_items <- setdiff(rec_items, union(known_items, popular_items))
+    length(serendip_items) / length(rec_items)
+  })
+  mean(scores, na.rm = TRUE)
+}
+
+# Compute metrics
+div_ubcf <- diversity_score(topn_ubcf, item_sim)
+div_svd  <- diversity_score(topn_svd, item_sim)
+ser_ubcf <- serendipity_score(topn_ubcf, train_data)
+ser_svd  <- serendipity_score(topn_svd, train_data)
+
+# Combine into results table
+comparison_table <- data.frame(
+  Model = c("UBCF", "SVD"),
+  RMSE = c(ubcf_acc["RMSE"], svd_acc["RMSE"]),
+  Diversity = c(div_ubcf, div_svd),
+  Serendipity = c(ser_ubcf, ser_svd)
+)
+
+comparison_table
+```
+
+### Plot the Top 10 most popular jokes 
+
+Shows the shape of popularity and tail 
+
+```{r}
+# Count how many users rated each joke
+joke_counts <- colCounts(Jester5k)
+joke_df <- data.frame(
+  JokeID = names(joke_counts),
+  Count = as.numeric(joke_counts)
+)
+
+# Identify top 10 most popular jokes
+top10_jokes <- names(sort(joke_counts, decreasing = TRUE)[1:10])
+joke_df$Top10 <- ifelse(joke_df$JokeID %in% top10_jokes, "Top 10", "Other")
+
+# Plot all jokes with top 10 highlighted
+library(ggplot2)
+ggplot(joke_df, aes(x = reorder(JokeID, -Count), y = Count, fill = Top10)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Top 10" = "orange", "Other" = "gray")) +
+  labs(title = "Joke Popularity in Jester5k Dataset",
+       x = "Joke ID",
+       y = "Number of Ratings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        plot.title = element_text(size = 14, face = "bold"))
+
+```
+
+### View Joke Recommendation for user 100
+
+Generate the top 10 joke recommendations for user 100 using both the UBCF and SVD models, converts the predictions to list format, and prints out the recommended joke IDs for each model.
+
+```{r}
+# Generate top-N predictions
+topn_ubcf <- predict(ubcf_model, getData(scheme, "known"), type = "topNList", n = 10)
+topn_svd  <- predict(svd_model, getData(scheme, "known"), type = "topNList", n = 10)
+
+# Convert to list format
+ubcf_list <- as(topn_ubcf, "list")
+svd_list  <- as(topn_svd, "list")
+
+# Extract user 100's recommendations
+ubcf_user100 <- ubcf_list[[100]]
+svd_user100  <- svd_list[[100]]
+
+# Print recommended joke IDs for User 100 with labels
+cat("Top 10 Joke IDs for User 100 from UBCF:\n")
+print(ubcf_user100)
+
+cat("\nTop 10 Joke IDs for User 100 from SVD:\n")
+print(svd_user100)
+
+```
+### Filter Out Top 10 Jokes & Train Models on Long-Tail
+
+Filter out the top 10 most popular jokes to focus on the long-tail items, then retrains UBCF and SVD models and evaluates their accuracy using RMSE on this new dataset.
+
+```{r}
+# Count how many users rated each joke
+joke_counts <- colCounts(Jester5k)
+
+# Get top 20 most frequently rated jokes
+top20_jokes <- names(sort(joke_counts, decreasing = TRUE)[1:20])
+print(top20_jokes)
+```
+```{r}
+# Step 1: Identify Top 10 Most Popular Jokes
+joke_counts <- colCounts(Jester5k)
+top10_jokes <- names(sort(joke_counts, decreasing = TRUE)[1:10])
+
+# Step 2: Remove Top 10 Jokes from Dataset
+Jester5k_longtail <- Jester5k[, !colnames(Jester5k) %in% top10_jokes]
+
+# Step 3: New Evaluation Scheme
+scheme_longtail <- evaluationScheme(Jester5k_longtail, method = "split", train = 0.8, given = 10, goodRating = 5)
+
+# Step 4: Train UBCF and SVD Models on Long-Tail Dataset
+ubcf_model_lt <- Recommender(getData(scheme_longtail, "train"), method = "UBCF",
+                             parameter = list(method = "pearson", nn = 30, normalize = "center"))
+svd_model_lt <- Recommender(getData(scheme_longtail, "train"), method = "SVD")
+
+# Step 5: Predict Ratings
+ubcf_pred_lt <- predict(ubcf_model_lt, getData(scheme_longtail, "known"), type = "ratings")
+svd_pred_lt  <- predict(svd_model_lt,  getData(scheme_longtail, "known"), type = "ratings")
+
+# Step 6: Evaluate RMSE
+ubcf_acc_lt <- calcPredictionAccuracy(ubcf_pred_lt, getData(scheme_longtail, "unknown"))
+svd_acc_lt  <- calcPredictionAccuracy(svd_pred_lt,  getData(scheme_longtail, "unknown"))
+
+```
+
+### Compute Diversity & Serendipity on Long-Tail Models
+
+Compute diversity and serendipity metrics for the UBCF and SVD models trained on the long-tail dataset, using cosine similarity and popularity filtering for serendipity.
+
+```{r}
+# Step 7: Generate Top-N Lists (Top 10)
+topn_ubcf_lt <- predict(ubcf_model_lt, getData(scheme_longtail, "known"), type = "topNList", n = 10)
+topn_svd_lt  <- predict(svd_model_lt,  getData(scheme_longtail, "known"), type = "topNList", n = 10)
+
+# Step 8: Item-Item Similarity Matrix
+item_sim_lt <- as.matrix(similarity(Jester5k_longtail, method = "cosine", which = "items"))
+colnames(item_sim_lt) <- colnames(Jester5k_longtail)
+rownames(item_sim_lt) <- colnames(Jester5k_longtail)
+
+# Step 9: Training Data for Serendipity
+train_data_lt <- getData(scheme_longtail, "train")
+
+# Step 10: Compute Metrics
+div_ubcf_lt <- diversity_score(topn_ubcf_lt, item_sim_lt)
+div_svd_lt  <- diversity_score(topn_svd_lt,  item_sim_lt)
+
+ser_ubcf_lt <- serendipity_score(topn_ubcf_lt, train_data_lt)
+ser_svd_lt  <- serendipity_score(topn_svd_lt,  train_data_lt)
+
+# Step 11: Combine into Table
+longtail_results <- data.frame(
+  Model = c("UBCF (Long Tail)", "SVD (Long Tail)"),
+  RMSE = c(ubcf_acc_lt["RMSE"], svd_acc_lt["RMSE"]),
+  Diversity = c(div_ubcf_lt, div_svd_lt),
+  Serendipity = c(ser_ubcf_lt, ser_svd_lt)
+)
+
+longtail_results
+
+```
+
+### Combine Original and Long-Tail Results
+
+Merge the original and long-tail evaluation results for comparison. 
+
+```{r}
+# Combine original + long-tail model results
+all_results <- rbind(comparison_table, longtail_results)
+
+# View the combined table
+all_results
+
+```
+
+### Visualize Diversity and Serendipity
+
+Create a bar chart to display results of original and long-tail results.
+
+```{r}
+library(tidyr)
+library(ggplot2)
+
+# Convert to long format for ggplot
+results_long <- pivot_longer(all_results,
+                             cols = c(Diversity, Serendipity),
+                             names_to = "Metric",
+                             values_to = "Value")
+
+# Plot with data labels
+ggplot(results_long, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_text(aes(label = round(Value, 3)), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.3, size = 3.5) +
+  labs(title = "Comparison of UBCF and SVD (Original vs Long-Tail)",
+       y = "Metric Value", x = "Model") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1),
+        plot.title = element_text(size = 14, face = "bold"))
+
+```
+
+### Compare Recommendations for User 100
+
+Display the top 10 joke recommendations for User 100 using both UBCF and SVD models, comparing outputs from the original and long-tail datasets.
+
+```{r}
+# Generate top-N predictions from long-tail models
+topn_ubcf_lt <- predict(ubcf_model_lt, getData(scheme_longtail, "known"), type = "topNList", n = 10)
+topn_svd_lt  <- predict(svd_model_lt,  getData(scheme_longtail, "known"), type = "topNList", n = 10)
+
+# Convert to list format
+ubcf_list_lt <- as(topn_ubcf_lt, "list")
+svd_list_lt  <- as(topn_svd_lt, "list")
+
+# Extract user 100's recommendations
+ubcf_user100_lt <- ubcf_list_lt[[100]]
+svd_user100_lt  <- svd_list_lt[[100]]
+
+# Print results
+cat("Top 10 Joke IDs for User 100 from UBCF (Long Tail):\n")
+print(ubcf_user100_lt)
+
+cat("\nTop 10 Joke IDs for User 100 from SVD (Long Tail):\n")
+print(svd_user100_lt)
+
+cat("Top 10 Joke IDs for User 100 from UBCF:\n")
+print(ubcf_user100)
+
+cat("\nTop 10 Joke IDs for User 100 from SVD:\n")
+print(svd_user100)
+```
+```{r}
+# Get joke popularity across all users
+joke_counts <- colCounts(Jester5k)
+joke_df <- data.frame(
+  JokeID = names(joke_counts),
+  Count = as.numeric(joke_counts)
+)
+
+# Mark jokes recommended by each model
+joke_df$UBCF <- joke_df$JokeID %in% ubcf_user100
+joke_df$SVD <- joke_df$JokeID %in% svd_user100
+joke_df$UBCF_LT <- joke_df$JokeID %in% ubcf_user100_lt
+joke_df$SVD_LT <- joke_df$JokeID %in% svd_user100_lt
+
+# Reshape to long format for coloring
+library(tidyr)
+library(dplyr)
+
+joke_long <- joke_df %>%
+  pivot_longer(cols = c(UBCF, SVD, UBCF_LT, SVD_LT),
+               names_to = "Model", values_to = "Recommended") %>%
+  filter(Recommended == TRUE)
+
+# Plot all jokes, highlighting those recommended by each model
+library(ggplot2)
+
+ggplot(joke_df, aes(x = JokeID, y = Count)) +
+  geom_col(fill = "grey80") +
+  geom_point(data = joke_long, aes(x = JokeID, y = Count, color = Model), size = 3) +
+  labs(title = "Joke Popularity with Highlighted Recommendations for User 100",
+       x = "Joke ID", y = "Number of Ratings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        plot.title = element_text(size = 14, face = "bold"))
+
+
+```
+
+### Conclusion
+
+In this project, I evaluated the performance of User-Based Collaborative Filtering (UBCF) and Singular Value Decomposition (SVD) using the Jester5k dataset. I assessed both models on the full dataset using RMSE for accuracy, as well as diversity and serendipity to measure the quality and novelty of recommendations. I then applied long-tail filtering by removing the 10 most popular jokes, retrained the models, and re-evaluated their performance on this modified dataset.
+
+The results showed that although RMSE slightly increased after filtering—indicating a minor loss in prediction accuracy—both diversity and serendipity improved for UBCF and SVD. This suggests that focusing on long-tail content can lead to more varied and unexpected recommendations. Overall, I found that optimizing for diversity and serendipity, alongside accuracy, offers a more user-centered approach to recommendation systems.
+
+In the context of a business, I believe that increasing the serendipity and diversity of a Jokes website would be very helpful. I imagine most people who know alot of the most popular jokes that are highly rated. If you are coming to this site you are looking for something  unique and different. The long tail method achieves this promoting less known jokes and offering users more personalized, novel experiences. This not only helps surface niche or underexposed items that might otherwise be overlooked but can also drive discovery, increase user retention, and expand the range of items consumed. Ultimately, such a strategy supports broader inventory exposure and can contribute to long-term customer loyalty and revenue growth by making recommendations feel more tailored and less repetitive.
+
+In real-world applications, enhancing diversity and serendipity in recommendations may slightly reduce RMSE but often improves user satisfaction. Future work could involve online evaluations, such as A/B testing, where users are randomly assigned to receive recommendations from different models. By tracking engagement metrics like clicks, time spent, or ratings, we could assess the real-world effectiveness of diversity-focused recommendations and their impact on the overall user experience.
+
