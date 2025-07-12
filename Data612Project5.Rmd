@@ -1,0 +1,211 @@
+---
+title: "Data 612 Project 5"
+author: "Kevin DiPerna"
+output: html_document
+---
+
+### Introduction
+
+In this project, I extend my earlier recommender system by using Apache Spark in a distributed environment. I use the MovieLens 100k dataset and employ Spark’s MLlib through the sparklyr package to implement a matrix factorization model using Alternating Least Squares (ALS). This exercise allows me to compare the performance, scalability, and complexity of building a distributed recommender system versus using recommenderlab in R.
+
+Recommender systems play a vital role in guiding users to content they’re likely to enjoy—whether that’s movies, products, or services. While traditional collaborative filtering works well on small datasets, its performance often declines as data size increases. Distributed computing frameworks like Apache Spark are designed to address this scalability challenge.
+
+### What is Spark?
+
+Spark in RStudio allows data scientists to leverage Apache Spark’s distributed computing power directly within the R environment using packages like sparklyr or SparkR. It enables scalable data processing, machine learning, and big data analysis by connecting R to a Spark cluster or running Spark locally. This is particularly useful for handling datasets that are too large for R’s memory or require parallel computation. With Spark, R users can perform tasks like data transformation, exploratory analysis, and model training efficiently across large-scale data. Ultimately, it brings the benefits of big data processing to R users in a familiar and tidyverse-friendly way.Apache Spark is a powerful tool for efficiently handling large-scale data by distributing computation across multiple machines and using in-memory processing. It is especially useful for big data tasks and machine learning. However, for smaller datasets, traditional R methods may be simpler and faster due to Spark's setup overhead.
+
+### Load Data 
+
+```{r}
+library(sparklyr)
+library(dplyr)
+library(ggplot2)
+library(recommenderlab)
+
+# Load MovieLense data
+data(MovieLense)
+```
+
+### Data Summary
+
+Overview of the MovieLense dataset by displaying its dimensions, total number of ratings, sparsity (density), summary statistics of the ratings, and a small sample of the rating matrix.
+
+```{r}
+# Preview the rating matrix
+MovieLense
+
+# Show matrix dimensions: number of users and movies
+dim(MovieLense)
+
+# Number of ratings in the dataset
+num_ratings <- sum(!is.na(as(MovieLense, "matrix")))
+cat("Total number of ratings:", num_ratings, "\n")
+
+# Density of the rating matrix (percentage of filled values)
+density <- num_ratings / (nrow(MovieLense) * ncol(MovieLense))
+cat("Matrix density:", round(density * 100, 2), "%\n")
+
+# Summary of rating values
+summary(getRatings(MovieLense))
+
+# Show a small portion of the rating matrix
+as(MovieLense[1:5, 1:5], "matrix")
+
+```
+### Rating Visualization 
+
+The histogram shows how users' average ratings are distributed, with most clustered between 3 and 4. This suggests a tendency for users to rate movies favorably, a pattern often seen in user-generated rating data due to positive bias.
+
+```{r}
+# Calculate average rating per user
+avg_user_rating <- rowMeans(as(MovieLense, "matrix"), na.rm = TRUE)
+
+# Convert to data frame for ggplot
+avg_user_df <- data.frame(user = 1:length(avg_user_rating), avg_rating = avg_user_rating)
+
+# Plot histogram
+ggplot(avg_user_df, aes(x = avg_rating)) +
+  geom_histogram(binwidth = 0.2, fill = "steelblue", color = "black") +
+  labs(title = "Histogram of Average Rating per User",
+       x = "Average Rating",
+       y = "Number of Users") +
+  theme_minimal()
+
+```
+
+### Convert ratings matrix to dataframe 
+
+Convert the MovieLense rating matrix into a data frame with numeric user and item IDs, preparing it for modeling and analysis.
+
+```{r}
+# Convert ratings matrix to dataframe
+df <- as(MovieLense, "data.frame") %>%
+  mutate(
+    user = as.integer(as.factor(user)),
+    item = as.integer(as.factor(item)),
+    rating = as.numeric(rating)
+  )
+```
+
+### Spark Setup
+
+Establish a local Spark connection and transfers the ratings data frame to Spark.
+
+
+```{r}
+spark_install(version = "3.1.2")
+```
+
+```{r}
+# Connect to Spark
+sc <- spark_connect(master = "local", version = "3.1.2")
+
+# Copy data to Spark
+ratings_tbl <- copy_to(sc, df, overwrite = TRUE)
+```
+
+### Build ALS Model in Spark
+
+Build a recommender model using Spark’s ALS (Alternating Least Squares) algorithm: it splits the ratings data into training and test sets, trains the ALS model on the training set, evaluates its RMSE on the test set, and measures the total time taken to complete the entire modeling process.
+
+```{r}
+# Record start time
+start_time_spark <- Sys.time()
+
+# Split into training and test
+splits <- ratings_tbl %>% sdf_random_split(training = 0.8, test = 0.2, seed = 42)
+training_tbl <- splits$training
+test_tbl <- splits$test
+
+# Train ALS model
+als_model <- ml_als(
+  x = training_tbl,
+  rating_col = "rating",
+  user_col = "user",
+  item_col = "item",
+  rank = 10,
+  max_iter = 10,
+  reg_param = 0.1,
+  cold_start_strategy = "drop"
+)
+
+# Evaluate RMSE
+predictions <- ml_predict(als_model, test_tbl)
+rmse_spark <- ml_regression_evaluator(
+  predictions,
+  label_col = "rating",
+  prediction_col = "prediction",
+  metric_name = "rmse"
+)
+
+# Record end time and calculate duration
+end_time_spark <- Sys.time()
+time_spark <- round(as.numeric(difftime(end_time_spark, start_time_spark, units = "secs")), 2)
+
+```
+
+### Compare to recommenderlab UBCF
+
+Build and evaluate a User-Based Collaborative Filtering (UBCF) recommender model using the recommenderlab package. Split the data using an evaluation scheme, trains the UBCF model, generates predictions, calculates the RMSE (Root Mean Squared Error), and measures the total time taken to complete the entire process.
+
+```{r}
+# Record start time
+start_time_reco <- Sys.time()
+
+# Evaluation scheme and training
+scheme <- evaluationScheme(MovieLense, method = "split", train = 0.8, given = 10, goodRating = 4)
+model_reco <- Recommender(getData(scheme, "train"), method = "UBCF")
+pred_reco <- predict(model_reco, getData(scheme, "known"), type = "ratings")
+rmse_reco <- calcPredictionAccuracy(pred_reco, getData(scheme, "unknown"))["RMSE"]
+
+# Record end time and calculate duration
+end_time_reco <- Sys.time()
+time_reco <- round(as.numeric(difftime(end_time_reco, start_time_reco, units = "secs")), 2)
+
+```
+
+### Results Summary
+
+Compare each model. 
+
+```{r}
+comparison <- data.frame(
+  Model = c("UBCF (recommenderlab)", "ALS (Spark MLlib)"),
+  RMSE = c(round(rmse_reco, 4), round(rmse_spark, 4)),
+  Time_Sec = c(time_reco, time_spark)
+)
+
+knitr::kable(comparison, caption = "RMSE and Runtime Comparison: recommenderlab vs Spark ALS")
+
+```
+
+### Visualzie Comparison
+
+Create a comparison data frame and visualize the RSME of each model. 
+
+```{r}
+# Create a comparison data frame
+comparison <- data.frame(
+  Model = c("UBCF (recommenderlab)", "ALS (Spark MLlib)"),
+  RMSE = c(round(rmse_reco, 4), round(rmse_spark, 4))
+)
+
+# Create bar plot
+ggplot(comparison, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "RMSE Comparison", y = "RMSE", x = "") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  geom_text(aes(label = RMSE), vjust = -0.3, size = 4)
+
+```
+
+### Interpretation 
+
+The ALS (Alternating Least Squares) model outperforms the UBCF (User-Based Collaborative Filtering) model in this case because it is better suited for handling sparse datasets like MovieLens. ALS uses matrix factorization to uncover hidden patterns between users and items by learning latent features, allowing it to generalize more effectively than UBCF, which relies only on surface-level similarities between users. Additionally, ALS includes regularization to reduce overfitting and is optimized for large-scale data through parallel processing in Spark. These factors make ALS more accurate and scalable, resulting in a lower RMSE compared to the UBCF model.
+
+### Conclusion
+
+Through this project, I was able to adapt my existing collaborative filtering model to run in a distributed setting using Apache Spark and sparklyr. The Spark ALS model showed improved RMSE compared to my previous UBCF model. While the dataset used (MovieLens 100k) is not large enough to require distributed computing, this project provided useful experience for scaling recommender systems.
+
+If my dataset contained millions of users or ratings, or required real-time recommendation delivery, moving to a distributed platform like Spark would be essential. It allows parallel processing, fault tolerance, and integration with production pipelines. However, Spark's added complexity—including environment setup, debugging, and longer development cycles—means that for smaller-scale projects, a single-node approach is often sufficient.
