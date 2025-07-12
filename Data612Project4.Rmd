@@ -307,6 +307,14 @@ ggplot(results_long, aes(x = Model, y = Value, fill = Metric)) +
 
 ```
 
+### Interpretation 
+
+SVD (Singular Value Decomposition) and UBCF (User-Based Collaborative Filtering) are two different collaborative filtering approaches used in recommender systems. SVD is a model-based method that uses matrix factorization to uncover latent features for users and items, making predictions by computing the similarity between these feature vectors. It is more scalable and handles sparse data well but can favor popular items. This is why we see the SVD model have lower diversity and serendipity than UBCF. 
+
+In contrast, UBCF is a memory-based method that finds similar users based on past ratings and recommends items they liked. While UBCF is more intuitive and personalized, it can struggle with sparsity and scalability. Overall, SVD captures global patterns, whereas UBCF focuses on local user-to-user relationships which tends to better with diversity and serendipity because its a more personalized experience instead of offering a user generic, whats the most popular recommendation. 
+
+Overall, UBCF (Long Tail) achieves the highest values for both metrics, suggesting it provides the most varied and pleasantly surprising recommendations. In contrast, SVD produces the lowest diversity and serendipity, due to its tendency to favor popular items. Introducing long-tail filtering improves these performance metrics for both models by encouraging recommendations of less popular, more novel items. This leads to greater content variety and helps users discover unexpected but relevant recommendations.
+
 ### Compare Recommendations for User 100
 
 Display the top 10 joke recommendations for User 100 using both UBCF and SVD models, comparing outputs from the original and long-tail datasets.
@@ -374,6 +382,11 @@ ggplot(joke_df, aes(x = JokeID, y = Count)) +
 
 
 ```
+
+### What is novelty, diversity and serendipity in a recommender system?
+
+Novelty, diversity, and serendipity are key concepts that enhance user experience beyond accuracy. Novelty refers to recommending items that are new or unfamiliar to the user, encouraging exploration. Diversity ensures that the list of recommendations includes a wide range of item types or topics, preventing redundancy. Serendipity combines novelty with relevance, offering unexpected yet delightful recommendations the user didn’t actively seek out but ends up enjoying. Together, these qualities help create more engaging, satisfying, and discovery-driven recommendation experiences. I was able to increase diversity and serendipity by applying long-tail filtering to each model. 
+
 
 ### Conclusion
 
