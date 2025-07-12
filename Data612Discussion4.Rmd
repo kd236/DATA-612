@@ -1,0 +1,12 @@
+---
+title: "Data 612 Discussion 4"
+author: "Kevin DiPerna"
+output: html_document
+---
+
+The articles by Renée DiResta and Zeynep Tufekci highlight a troubling consequence of engagement-optimized recommender systems, their tendency to radicalize users. These systems, particularly on platforms like YouTube, prioritize content that maximizes watch time, which often leads users down increasingly extreme content paths. Tufekci describes how watching moderate content can quickly result in recommendations for conspiratorial or extremist material, not because the user sought it out, but because the algorithm learns that sensationalism sustains attention. This feedback loop not only distorts users' worldview but also facilitates the spread of misinformation and polarizing ideologies.
+
+One possible solution to this is to incorporate diversity and counterfactual exposure into recommendation algorithms. Instead of optimizing purely for clicks or watch time, platforms can introduce content from varied viewpoints, trusted sources, or less radical alternatives to break the echo chamber effect. DiResta suggests that transparency and human oversight can help shape more responsible recommendation pathways. Additionally, platforms can design algorithms that detect rapid ideological shifts and slow down the reinforcement loop, giving users space to critically engage rather than passively consume.
+
+In the context of algorithmic discrimination, Krishnan et al.'s work on social influence bias offers a pathway for mitigation. Their research shows that prior ratings can influence user feedback, skewing recommendations and amplifying majority opinions. One proposed countermeasure is de-biasing models by separating social signals from genuine user preferences during training. This helps prevent minority viewpoints or less popular items from being systematically under-recommended. Overall, recommender systems must be redesigned with fairness, diversity, and long-term user well-being in mind—not just short-term engagement. 
+
