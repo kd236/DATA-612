@@ -1,0 +1,14 @@
+---
+title: "Data 612 Final Project Planning"
+author: "Kevin DiPerna"
+output: html_document
+---
+
+For my final project, I would like to build a recommender system using the 1M MovieLens datset and deploy it to Amazon Web Services (AWS). The goal is to implement and compare three recommendation algorithms—User-Based Collaborative Filtering (UBCF), Item-Based Collaborative Filtering (IBCF), and Alternating Least Squares (ALS)—within an R environment using the recommenderlab and sparklyr packages. This will be the largest datatset I have ever worked with. By leveraging AWS infrastructure, this project simulates a real-world deployment scenario where data is stored in S3, computation is handled by an EC2 instance running R and Apache Spark, and access control is managed through a Virtual Private Cloud (VPC). This architecture ensures scalability, reproducibility, and security for the recommendation pipeline.
+
+The project will begin by uploading the MovieLens dataset to S3 and connecting it to the EC2 instance. The data will be processed into a long format suitable for training, and Spark will be used to scale the ALS model. Evaluation will be based on traditional metrics such as Root Mean Squared Error (RMSE), along with more nuanced criteria such as novelty (exposure to less popular items), serendipity (unexpected but relevant recommendations), and diversity (variety within the recommendation list). These metrics help assess not just accuracy but also the quality and usefulness of recommendations from a user experience perspective.
+
+Ultimately, this project aims to explore when and why distributed solutions like Apache Spark become necessary. While the MovieLens 1M dataset can still be processed locally, deploying it on Spark helps simulate larger-scale production scenarios. The project deliverables will include an R Markdown report with visualizations and evaluation metrics, a working cloud deployment pipeline, and a discussion comparing model performance and system scalability. I will use this for my project 6 and final project as well. 
+
+
+
